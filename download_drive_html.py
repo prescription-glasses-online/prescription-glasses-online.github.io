@@ -145,10 +145,22 @@ def download_txt_file(file_id, file_name, original_name):
         _, done = downloader.next_chunk()
     text_content = fh.getvalue().decode('utf-8', errors='ignore')
 
-    # 从清理后的内容创建HTML
-    html_content = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{original_name}</title></head><body><pre>{text_content}</pre></body></html>"
+    # 检查文本内容是否包含 HTML 标签
+    if re.search(r'<html|head|body', text_content, re.IGNORECASE):
+        # 如果是 HTML，提取 <head> 和 <body> 内容
+        head_content_match = re.search(r'<head.*?>(.*?)</head>', text_content, re.DOTALL | re.IGNORECASE)
+        body_content_match = re.search(r'<body.*?>(.*?)</body>', text_content, re.DOTALL | re.IGNORECASE)
+        
+        head_content = head_content_match.group(1) if head_content_match else ""
+        body_content = body_content_match.group(1) if body_content_match else text_content
+        
+        final_html = f"<!DOCTYPE html><html><head>{head_content}</head><body>{body_content}</body></html>"
+    else:
+        # 如果是纯文本，用一个干净的模板包裹
+        final_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{original_name}</title></head><body><pre>{text_content}</pre></body></html>"
+    
     with open(file_name, 'w', encoding='utf-8') as f:
-        f.write(html_content)
+        f.write(final_html)
     print(f"✅ TXT 已转换为 HTML: {file_name}")
 
 def export_google_doc(file_id, file_name):
@@ -162,12 +174,15 @@ def export_google_doc(file_id, file_name):
     
     html_content = fh.getvalue().decode('utf-8', errors='ignore')
     
-    # 移除所有可能存在的重复 HTML 结构，只保留<body>内的内容
-    cleaned_content = re.sub(r'<!DOCTYPE html>.*?<body.*?>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
-    cleaned_content = re.sub(r'</body.*?>.*?</html>', '', cleaned_content, flags=re.DOTALL | re.IGNORECASE)
+    # 使用正则表达式提取 <head> 和 <body> 标签内的内容
+    head_content_match = re.search(r'<head.*?>(.*?)</head>', html_content, re.DOTALL | re.IGNORECASE)
+    body_content_match = re.search(r'<body.*?>(.*?)</body>', html_content, re.DOTALL | re.IGNORECASE)
     
-    # 从清理后的内容创建新的HTML
-    final_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{file_name}</title></head><body>{cleaned_content}</body></html>"
+    head_content = head_content_match.group(1) if head_content_match else ""
+    body_content = body_content_match.group(1) if body_content_match else html_content
+
+    # 从提取的内容创建新的、完整的HTML
+    final_html = f"<!DOCTYPE html><html><head>{head_content}</head><body>{body_content}</body></html>"
     
     with open(file_name, 'w', encoding='utf-8') as f:
         f.write(final_html)
