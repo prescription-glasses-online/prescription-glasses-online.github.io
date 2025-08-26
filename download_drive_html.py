@@ -237,11 +237,8 @@ with open("index.html", "w", encoding="utf-8") as f:
 print("✅ 已生成 index.html (完整站点地图)")
 
 # ------------------------
-# ------------------------
 # 在每个页面底部添加随机内部链接
 # ------------------------
-import re
-
 all_html_files = [f for f in os.listdir(".") if f.endswith(".html") and f != "index.html"]
 
 for fname in all_html_files:
@@ -249,12 +246,9 @@ for fname in all_html_files:
         with open(fname, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
 
-        # 使用一个更强的正则表达式来移除所有已有的 footer 链接部分
-        # 考虑到 footer 标签可能包含多行和各种属性
-        footer_pattern = re.compile(r"<footer.*?</footer>", re.DOTALL | re.IGNORECASE)
-        
-        # 移除文件中的所有 footer 标签
-        cleaned_content = re.sub(footer_pattern, "", content)
+        # 使用正则表达式移除所有已有的 <internallinks> 标签
+        links_pattern = re.compile(r"<internallinks>.*?</internallinks>", re.DOTALL | re.IGNORECASE)
+        cleaned_content = re.sub(links_pattern, "", content)
         
         # 从潜在链接列表中排除当前文件
         other_files = [x for x in all_html_files if x != fname]
@@ -264,7 +258,7 @@ for fname in all_html_files:
 
         if num_links > 0:
             random_links = random.sample(other_files, num_links)
-            links_html = "<footer><ul>\n" + "\n".join([f'<li><a href="{x}">{x}</a></li>' for x in random_links]) + "\n</ul></footer>"
+            links_html = "<internallinks><ul>\n" + "\n".join([f'<li><a href="{x}">{x}</a></li>' for x in random_links]) + "\n</ul></internallinks>"
             
             # 在 </body> 标签之前插入新的链接
             if "</body>" in cleaned_content:
