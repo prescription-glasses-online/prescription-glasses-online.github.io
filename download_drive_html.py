@@ -237,7 +237,7 @@ with open("index.html", "w", encoding="utf-8") as f:
 print("✅ 已生成 index.html (完整站点地图)")
 
 # ------------------------
-# 在每个页面底部添加随机内部链接
+# 在每个页面底部添加随机内部链接 (已优化，不会累积)
 # ------------------------
 all_html_files = [f for f in os.listdir(".") if f.endswith(".html") and f != "index.html"]
 
@@ -246,29 +246,29 @@ for fname in all_html_files:
         with open(fname, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
 
-        # 使用正则表达式移除所有已有的 <internallinks> 标签
-        links_pattern = re.compile(r"<internallinks>.*?</internallinks>", re.DOTALL | re.IGNORECASE)
-        cleaned_content = re.sub(links_pattern, "", content)
+        # 使用正则表达式移除所有已有的 footer 链接部分
+        # re.DOTALL 允许 '.' 匹配换行符，re.IGNORECASE 忽略大小写
+        # 正则表达式匹配从 <footer> 到 </footer> 之间的所有内容（非贪婪匹配）
+        content = re.sub(r"<footer>.*?</footer>", "", content, flags=re.DOTALL | re.IGNORECASE)
         
         # 从潜在链接列表中排除当前文件
         other_files = [x for x in all_html_files if x != fname]
-        
         # 确定要添加的随机链接数量（4 到 6 个之间）
         num_links = min(len(other_files), random.randint(4, 6))
 
         if num_links > 0:
             random_links = random.sample(other_files, num_links)
-            links_html = "<internallinks><ul>\n" + "\n".join([f'<li><a href="{x}">{x}</a></li>' for x in random_links]) + "\n</ul></internallinks>"
+            links_html = "<footer><ul>\n" + "\n".join([f'<li><a href="{x}">{x}</a></li>' for x in random_links]) + "\n</ul></footer>"
             
-            # 在 </body> 标签之前插入新的链接
-            if "</body>" in cleaned_content:
-                cleaned_content = cleaned_content.replace("</body>", links_html + "</body>")
+            # 找到 </body> 标签之前的位置来插入新的链接
+            if "</body>" in content:
+                content = content.replace("</body>", links_html + "</body>")
             else:
                 # 如果没有 </body> 标签，就直接附加到文件末尾
-                cleaned_content += links_html
+                content += links_html
 
         with open(fname, "w", encoding="utf-8") as f:
-            f.write(cleaned_content)
+            f.write(content)
     except Exception as e:
         print(f"无法为 {fname} 处理内部链接: {e}")
 
