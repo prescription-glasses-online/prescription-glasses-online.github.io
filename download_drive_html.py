@@ -161,6 +161,7 @@ def export_google_doc(file_id, file_name):
 
 # ------------------------
 # ------------------------
+# ------------------------
 # 主程序
 # ------------------------
 all_files = get_cached_files()
@@ -177,7 +178,7 @@ if all_files is None:
         total_files_found += file_count
         print(f"✅ 文件夹 [{folder_id}] 共找到 {file_count} 个文件。")
     save_files_to_cache(all_files)
-    print(f"🚀 总共从 {len(FOLDER_IDS)} 个文件夹中找到 {total_files_found} 个文件。")
+    print(f"🚀 任务完成：总共从 {len(FOLDER_IDS)} 个文件夹中找到 {total_files_found} 个文件。")
 
 new_files = [f for f in all_files if f['id'] not in processed_data["fileIds"]]
 
