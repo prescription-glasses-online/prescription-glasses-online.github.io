@@ -4,7 +4,7 @@ import sys
 import io
 import random
 import time
-import re # 导入正则表达式模块
+import re
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -136,27 +136,42 @@ def download_html_file(file_id, file_name):
     print(f"✅ 已下载 {file_name}")
 
 def download_txt_file(file_id, file_name, original_name):
-    """下载一个文本文件并将其转换为 HTML。"""
+    """下载一个文本文件，并将其转换为一个干净的HTML文件。"""
     request = service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
     done = False
     while not done:
         _, done = downloader.next_chunk()
-    text_content = fh.getvalue().decode('utf-8')
+    text_content = fh.getvalue().decode('utf-8', errors='ignore')
+
+    # 从清理后的内容创建HTML
     html_content = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{original_name}</title></head><body><pre>{text_content}</pre></body></html>"
     with open(file_name, 'w', encoding='utf-8') as f:
         f.write(html_content)
     print(f"✅ TXT 已转换为 HTML: {file_name}")
 
 def export_google_doc(file_id, file_name):
-    """将 Google 文档导出为 HTML。"""
+    """将 Google 文档导出为 HTML，并移除多余的HTML标记。"""
     request = service.files().export_media(fileId=file_id, mimeType='text/html')
-    fh = io.FileIO(file_name, 'wb')
+    fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
     done = False
     while not done:
         _, done = downloader.next_chunk()
+    
+    html_content = fh.getvalue().decode('utf-8', errors='ignore')
+    
+    # 移除所有可能存在的重复 HTML 结构，只保留<body>内的内容
+    cleaned_content = re.sub(r'<!DOCTYPE html>.*?<body.*?>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+    cleaned_content = re.sub(r'</body.*?>.*?</html>', '', cleaned_content, flags=re.DOTALL | re.IGNORECASE)
+    
+    # 从清理后的内容创建新的HTML
+    final_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{file_name}</title></head><body>{cleaned_content}</body></html>"
+    
+    with open(file_name, 'w', encoding='utf-8') as f:
+        f.write(final_html)
+        
     print(f"✅ Google 文档已导出为 HTML: {file_name}")
 
 # ------------------------
@@ -177,7 +192,6 @@ new_files = [f for f in all_files if f['id'] not in processed_data["fileIds"]]
 
 if not new_files:
     print("✅ 没有新的文件需要处理。")
-    # 即使没有新文件，也需要重新生成内部链接，以防万一
     print("重新生成所有页面的内部链接...")
 else:
     print(f"发现 {len(new_files)} 个未处理文件。")
@@ -237,7 +251,6 @@ with open("index.html", "w", encoding="utf-8") as f:
 print("✅ 已生成 index.html (完整站点地图)")
 
 # ------------------------
-# ------------------------
 # 在每个页面底部添加随机内部链接 (已优化，不会累积)
 # ------------------------
 all_html_files = [f for f in os.listdir(".") if f.endswith(".html") and f != "index.html"]
@@ -247,8 +260,7 @@ for fname in all_html_files:
         with open(fname, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
 
-        # 使用循环和正则表达式移除所有已有的 footer 链接部分
-        # 这个方法更可靠，因为它会反复清理直到没有匹配为止
+        # 使用正则表达式移除所有已有的 footer 链接部分
         footer_pattern = re.compile(r"<footer>.*?</footer>", re.DOTALL | re.IGNORECASE)
         
         while re.search(footer_pattern, content):
