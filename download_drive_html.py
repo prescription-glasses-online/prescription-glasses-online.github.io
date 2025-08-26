@@ -238,50 +238,46 @@ print("✅ 已生成 index.html (完整站点地图)")
 
 # ------------------------
 # ------------------------
+# ------------------------
 # 在每个页面底部添加随机内部链接 (已优化，不会累积)
 # ------------------------
 all_html_files = [f for f in os.listdir(".") if f.endswith(".html") and f != "index.html"]
 
-for fname in all_html_files:
-    try:
-        with open(fname, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
-           # 这个正则表达式会匹配并删除所有重复的 <!DOCTYPE html> 头部
+# 这个正则表达式会匹配并删除所有重复的 <!DOCTYPE html> 头部
 # 它会找到第一个 <!DOCTYPE html> 之后，紧接着出现的任何重复的 <!DOCTYPE html>
 doctype_pattern = re.compile(r'(<!DOCTYPE html>.*?)<!DOCTYPE html>', re.DOTALL | re.IGNORECASE)
+footer_pattern = re.compile(r"<footer>.*?</footer>", re.DOTALL | re.IGNORECASE)
 
 for fname in all_html_files:
     try:
         with open(fname, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
 
-        # 使用正则表达式来清理重复的 HTML 头部
+        # 第一步：清理重复的 HTML 头部
         # 这里的 r'\1' 表示只保留第一个匹配到的 <!DOCTYPE html> 和它后面的内容
         cleaned_content = re.sub(doctype_pattern, r'\1', content)
 
-        # 使用正则表达式移除所有已有的 footer 链接部分
-        # re.DOTALL 允许 '.' 匹配换行符，re.IGNORECASE 忽略大小写
-        # 正则表达式匹配从 <footer> 到 </footer> 之间的所有内容（非贪婪匹配）
-        content = re.sub(r"<footer>.*?</footer>", "", content, flags=re.DOTALL | re.IGNORECASE)
+        # 第二步：移除所有已有的 footer 标签
+        cleaned_content = re.sub(footer_pattern, "", cleaned_content)
         
-        # 从潜在链接列表中排除当前文件
+        # 第三步：生成新的随机链接
         other_files = [x for x in all_html_files if x != fname]
-        # 确定要添加的随机链接数量（4 到 6 个之间）
         num_links = min(len(other_files), random.randint(4, 6))
 
+        links_html = ""
         if num_links > 0:
             random_links = random.sample(other_files, num_links)
             links_html = "<footer><ul>\n" + "\n".join([f'<li><a href="{x}">{x}</a></li>' for x in random_links]) + "\n</ul></footer>"
             
-            # 找到 </body> 标签之前的位置来插入新的链接
-            if "</body>" in content:
-                content = content.replace("</body>", links_html + "</body>")
-            else:
-                # 如果没有 </body> 标签，就直接附加到文件末尾
-                content += links_html
-
+        # 第四步：将新的链接插入到正确的位置
+        if "</body>" in cleaned_content:
+            final_content = cleaned_content.replace("</body>", links_html + "</body>")
+        else:
+            final_content = cleaned_content + links_html + "</body></html>"
+        
         with open(fname, "w", encoding="utf-8") as f:
-            f.write(content)
+            f.write(final_content)
+            
     except Exception as e:
         print(f"无法为 {fname} 处理内部链接: {e}")
 
