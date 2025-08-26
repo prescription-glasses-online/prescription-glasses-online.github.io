@@ -237,7 +237,6 @@ with open("index.html", "w", encoding="utf-8") as f:
 print("✅ 已生成 index.html (完整站点地图)")
 
 # ------------------------
-# ------------------------
 # 在每个页面底部添加随机内部链接 (已优化，不会累积)
 # ------------------------
 all_html_files = [f for f in os.listdir(".") if f.endswith(".html") and f != "index.html"]
@@ -247,12 +246,10 @@ for fname in all_html_files:
         with open(fname, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
 
-        # 使用循环和正则表达式移除所有已有的 footer 链接部分
-        # 这个方法更可靠，因为它会反复清理直到没有匹配为止
-        footer_pattern = re.compile(r"<footer>.*?</footer>", re.DOTALL | re.IGNORECASE)
-        
-        while re.search(footer_pattern, content):
-            content = re.sub(footer_pattern, "", content)
+        # 使用正则表达式移除所有已有的 footer 链接部分
+        # re.DOTALL 允许 '.' 匹配换行符，re.IGNORECASE 忽略大小写
+        # 正则表达式匹配从 <footer> 到 </footer> 之间的所有内容（非贪婪匹配）
+        content = re.sub(r"<footer>.*?</footer>", "", content, flags=re.DOTALL | re.IGNORECASE)
         
         # 从潜在链接列表中排除当前文件
         other_files = [x for x in all_html_files if x != fname]
