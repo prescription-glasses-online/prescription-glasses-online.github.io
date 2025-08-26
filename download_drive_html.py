@@ -237,7 +237,8 @@ with open("index.html", "w", encoding="utf-8") as f:
 print("✅ 已生成 index.html (完整站点地图)")
 
 # ------------------------
-# 在每个页面底部添加随机内部链接 (已优化，不会累积)
+# ------------------------
+# 在每个页面底部添加随机内部链接
 # ------------------------
 all_html_files = [f for f in os.listdir(".") if f.endswith(".html") and f != "index.html"]
 
@@ -246,29 +247,27 @@ for fname in all_html_files:
         with open(fname, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
 
-        # 使用正则表达式移除所有已有的 footer 链接部分
-        # re.DOTALL 允许 '.' 匹配换行符，re.IGNORECASE 忽略大小写
-        # 正则表达式匹配从 <footer> 到 </footer> 之间的所有内容（非贪婪匹配）
-        content = re.sub(r"<footer>.*?</footer>", "", content, flags=re.DOTALL | re.IGNORECASE)
-        
-        # 从潜在链接列表中排除当前文件
+        # 1. 提取核心 body 内容
+        body_content_match = re.search(r'<body>(.*?)</body>', content, re.DOTALL | re.IGNORECASE)
+        body_content = body_content_match.group(1) if body_content_match else ""
+
+        # 2. 从 body 内容中移除所有已有的 footer 标签
+        cleaned_body_content = re.sub(r"<footer.*?</footer>", "", body_content, flags=re.DOTALL | re.IGNORECASE)
+
+        # 3. 生成新的内部链接 HTML
         other_files = [x for x in all_html_files if x != fname]
-        # 确定要添加的随机链接数量（4 到 6 个之间）
         num_links = min(len(other_files), random.randint(4, 6))
 
+        links_html = ""
         if num_links > 0:
             random_links = random.sample(other_files, num_links)
             links_html = "<footer><ul>\n" + "\n".join([f'<li><a href="{x}">{x}</a></li>' for x in random_links]) + "\n</ul></footer>"
-            
-            # 找到 </body> 标签之前的位置来插入新的链接
-            if "</body>" in content:
-                content = content.replace("</body>", links_html + "</body>")
-            else:
-                # 如果没有 </body> 标签，就直接附加到文件末尾
-                content += links_html
+
+        # 4. 重建整个文件，确保只有单个链接块
+        final_html = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{fname}</title></head><body>{cleaned_body_content}{links_html}</body></html>"
 
         with open(fname, "w", encoding="utf-8") as f:
-            f.write(content)
+            f.write(final_html)
     except Exception as e:
         print(f"无法为 {fname} 处理内部链接: {e}")
 
