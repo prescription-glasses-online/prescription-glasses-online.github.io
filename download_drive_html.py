@@ -237,6 +237,7 @@ with open("index.html", "w", encoding="utf-8") as f:
 print("✅ 已生成 index.html (完整站点地图)")
 
 # ------------------------
+# ------------------------
 # 在每个页面底部添加随机内部链接 (已优化，不会累积)
 # ------------------------
 all_html_files = [f for f in os.listdir(".") if f.endswith(".html") and f != "index.html"]
@@ -245,6 +246,19 @@ for fname in all_html_files:
     try:
         with open(fname, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
+            # 这个正则表达式会匹配并删除所有重复的 <!DOCTYPE html> 头部
+# 它会找到第一个 <!DOCTYPE html> 之后，紧接着出现的任何重复的 <!DOCTYPE html>
+doctype_pattern = re.compile(r'(<!DOCTYPE html>.*?)<!DOCTYPE html>', re.DOTALL | re.IGNORECASE)
+
+for fname in all_html_files:
+    try:
+        with open(fname, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+
+        # 使用正则表达式来清理重复的 HTML 头部
+        # 这里的 r'\1' 表示只保留第一个匹配到的 <!DOCTYPE html> 和它后面的内容
+        cleaned_content = re.sub(doctype_pattern, r'\1', content)
+
 
         # 使用正则表达式移除所有已有的 footer 链接部分
         # re.DOTALL 允许 '.' 匹配换行符，re.IGNORECASE 忽略大小写
