@@ -72,7 +72,6 @@ def get_cached_files():
             with open(cache_file_path, "r") as f:
                 cache_data = json.load(f)
                 last_updated = cache_data.get("last_updated")
-                # 检查缓存是否过期
                 if time.time() - last_updated < CACHE_EXPIRY_HOURS * 3600:
                     print("✅ 缓存未过期，正在从本地加载文件列表。")
                     return cache_data.get("files", [])
@@ -173,58 +172,54 @@ if all_files is None:
         all_files.extend(files)
     save_files_to_cache(all_files)
 
-# 过滤掉已经处理过的文件
 new_files = [f for f in all_files if f['id'] not in processed_data["fileIds"]]
 
 if not new_files:
     print("✅ 没有新的文件需要处理。")
-    sys.exit(0)
+    # 如果没有新文件，也要重新生成内部链接
+    print("重新生成所有页面的内部链接...")
+else:
+    print(f"发现 {len(new_files)} 个未处理文件。")
+    num_to_process = min(len(new_files), 30)
+    selected_files = random.sample(new_files, num_to_process)
+    print(f"本次运行将处理 {len(selected_files)} 个文件。")
 
-print(f"发现 {len(new_files)} 个未处理文件。")
+    available_keywords = list(keywords)
+    keywords_ran_out = False
 
-# 随机选择最多 30 个文件进行处理
-num_to_process = min(len(new_files), 30)
-selected_files = random.sample(new_files, num_to_process)
+    for f in selected_files:
+        if available_keywords:
+            keyword = available_keywords.pop(0)
+            safe_name = keyword + ".html"
+        else:
+            if not keywords_ran_out:
+                print("⚠️ 关键词已用完，将使用原始文件名加随机后缀。")
+                keywords_ran_out = True
+            
+            base_name = os.path.splitext(f['name'])[0]
+            sanitized_name = base_name.replace(" ", "-").replace("/", "-")
+            random_suffix = str(random.randint(1000, 9999))
+            safe_name = f"{sanitized_name}-{random_suffix}.html"
 
-print(f"本次运行将处理 {len(selected_files)} 个文件。")
+        print(f"正在处理 '{f['name']}' -> '{safe_name}'")
 
-# 创建一个关键词的副本，用于消耗
-available_keywords = list(keywords)
-keywords_ran_out = False
+        if f['mimeType'] == 'text/html':
+            download_html_file(f['id'], safe_name)
+        elif f['mimeType'] == 'text/plain':
+            download_txt_file(f['id'], safe_name, f['name'])
+        else: # 'application/vnd.google-apps.document'
+            export_google_doc(f['id'], safe_name)
 
-for f in selected_files:
-    if available_keywords:
-        keyword = available_keywords.pop(0)
-        safe_name = keyword + ".html"
-    else:
-        if not keywords_ran_out:
-            print("⚠️ 关键词已用完，将使用原始文件名加随机后缀。")
-            keywords_ran_out = True
-        
-        base_name = os.path.splitext(f['name'])[0]
-        sanitized_name = base_name.replace(" ", "-").replace("/", "-")
-        random_suffix = str(random.randint(1000, 9999))
-        safe_name = f"{sanitized_name}-{random_suffix}.html"
+        processed_data["fileIds"].append(f['id'])
 
-    print(f"正在处理 '{f['name']}' -> '{safe_name}'")
+    with open(processed_file_path, "w") as f:
+        json.dump(processed_data, f, indent=4)
+    print(f"💾 已将 {len(selected_files)} 个新文件 ID 保存到 {processed_file_path}")
 
-    if f['mimeType'] == 'text/html':
-        download_html_file(f['id'], safe_name)
-    elif f['mimeType'] == 'text/plain':
-        download_txt_file(f['id'], safe_name, f['name'])
-    else: # 'application/vnd.google-apps.document'
-        export_google_doc(f['id'], safe_name)
-
-    processed_data["fileIds"].append(f['id'])
-
-with open(processed_file_path, "w") as f:
-    json.dump(processed_data, f, indent=4)
-print(f"💾 已将 {len(selected_files)} 个新文件 ID 保存到 {processed_file_path}")
-
-with open(keywords_file, "w", encoding="utf-8") as f:
-    for keyword in available_keywords:
-        f.write(keyword + "\n")
-print(f"✅ 已用剩余的关键词更新 {keywords_file}")
+    with open(keywords_file, "w", encoding="utf-8") as f:
+        for keyword in available_keywords:
+            f.write(keyword + "\n")
+    print(f"✅ 已用剩余的关键词更新 {keywords_file}")
 
 # ------------------------
 # 生成累积的站点地图
@@ -241,7 +236,7 @@ with open("index.html", "w", encoding="utf-8") as f:
 print("✅ 已生成 index.html (完整站点地图)")
 
 # ------------------------
-# 在每个页面底部添加随机内部链接
+# 在每个页面底部添加随机内部链接 (已优化，不会累积)
 # ------------------------
 all_html_files = [f for f in os.listdir(".") if f.endswith(".html") and f != "index.html"]
 
@@ -250,13 +245,29 @@ for fname in all_html_files:
         with open(fname, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
 
+        # 移除已有的 footer 链接部分，如果有的话
+        if "<footer>" in content:
+            # 找到 <footer> 开始和结束的位置
+            start_pos = content.find("<footer>")
+            end_pos = content.find("</footer>")
+            # 确保找到成对的标签
+            if start_pos != -1 and end_pos != -1:
+                content = content[:start_pos] + content[end_pos + len("</footer>"):]
+        
+        # 从潜在链接列表中排除当前文件
         other_files = [x for x in all_html_files if x != fname]
+        # 确定要添加的随机链接数量（4 到 6 个之间）
         num_links = min(len(other_files), random.randint(4, 6))
 
         if num_links > 0:
             random_links = random.sample(other_files, num_links)
             links_html = "<footer><ul>\n" + "\n".join([f'<li><a href="{x}">{x}</a></li>' for x in random_links]) + "\n</ul></footer>"
-            content += links_html
+            # 找到 </body> 标签之前的位置来插入新的链接
+            if "</body>" in content:
+                content = content.replace("</body>", links_html + "</body>")
+            else:
+                # 如果没有 </body>，就直接附加
+                content += links_html
 
         with open(fname, "w", encoding="utf-8") as f:
             f.write(content)
