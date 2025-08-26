@@ -4,7 +4,7 @@ import sys
 import io
 import random
 import time
-import re # 导入正则表达式模块
+import re
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -93,7 +93,7 @@ def save_files_to_cache(files):
     print("💾 已将文件列表保存到本地缓存。")
 
 # ------------------------
-# 获取文件列表的函数 (已优化)
+# 获取文件列表的函数
 # ------------------------
 def list_files(folder_id):
     """列出指定 Google Drive 文件夹中的所有文件，支持分页。"""
@@ -125,42 +125,36 @@ def list_files(folder_id):
 # ------------------------
 # 下载和生成 HTML
 # ------------------------
-def download_html_file(file_id, file_name):
-    """下载一个 HTML 文件。"""
-    request = service.files().get_media(fileId=file_id)
-    fh = io.FileIO(file_name, 'wb')
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    print(f"✅ 已下载 {file_name}")
+def download_and_process_file(file_id, mime_type, original_name, new_file_name):
+    """
+    下载文件并将其转换为一个干净的、标准的HTML文件。
+    - 统一处理所有文件类型，先提取纯文本，再重建HTML。
+    """
+    if mime_type == 'application/vnd.google-apps.document':
+        request = service.files().export_media(fileId=file_id, mimeType='text/html')
+    elif mime_type == 'text/html' or mime_type == 'text/plain':
+        request = service.files().get_media(fileId=file_id)
+    else:
+        print(f"跳过不支持的文件类型: {mime_type}")
+        return
 
-def download_txt_file(file_id, file_name, original_name):
-    """下载一个文本文件并将其转换为 HTML。"""
-    request = service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
     done = False
     while not done:
         _, done = downloader.next_chunk()
-    text_content = fh.getvalue().decode('utf-8')
-    html_content = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{original_name}</title></head><body><pre>{text_content}</pre></body></html>"
-    with open(file_name, 'w', encoding='utf-8') as f:
+
+    content = fh.getvalue().decode('utf-8', errors='ignore')
+    
+    # 使用正则表达式彻底移除所有 HTML 标签，只保留纯文本
+    clean_text = re.sub(r'<[^>]+>', '', content)
+
+    # 用一个全新的、完整的HTML模板包裹纯文本内容
+    html_content = f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{original_name}</title></head><body><pre>{clean_text}</pre></body></html>"
+    with open(new_file_name, 'w', encoding='utf-8') as f:
         f.write(html_content)
-    print(f"✅ TXT 已转换为 HTML: {file_name}")
+    print(f"✅ 已处理并保存为: {new_file_name}")
 
-def export_google_doc(file_id, file_name):
-    """将 Google 文档导出为 HTML。"""
-    request = service.files().export_media(fileId=file_id, mimeType='text/html')
-    fh = io.FileIO(file_name, 'wb')
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    print(f"✅ Google 文档已导出为 HTML: {file_name}")
-
-# ------------------------
-# ------------------------
 # ------------------------
 # 主程序
 # ------------------------
@@ -180,15 +174,35 @@ if all_files is None:
     save_files_to_cache(all_files)
     print(f"🚀 任务完成：总共从 {len(FOLDER_IDS)} 个文件夹中找到 {total_files_found} 个文件。")
 
-new_files = [f for f in all_files if f['id'] not in processed_data["fileIds"]]
+# 新增逻辑：找出并修复缺失的文件
+local_files = [f for f in os.listdir(".") if f.endswith(".html")]
+local_file_names = {os.path.basename(f) for f in local_files}
+processed_file_ids_set = set(processed_data["fileIds"])
+cached_file_ids_set = {f['id'] for f in all_files}
+ 
+# 找出processed_files.json中ID存在但本地文件缺失的文件
+missing_files_to_reprocess = []
+for file_info in all_files:
+    if file_info['id'] in processed_file_ids_set:
+        keyword_match = next((kw for kw in keywords if file_info['name'].startswith(kw)), None)
+        # 根据关键词或者随机名称来匹配文件名
+        expected_file_name = f"{keyword_match}.html" if keyword_match else None
+        if not expected_file_name or expected_file_name not in local_file_names:
+            # 如果文件名不匹配，则检查是否存在以文件ID命名的文件
+            if not any(file_info['id'] in f for f in local_file_names):
+                missing_files_to_reprocess.append(file_info)
 
-if not new_files:
-    print("✅ 没有新的文件需要处理。")
+# 找出新文件
+new_files = [f for f in all_files if f['id'] not in processed_file_ids_set]
+final_files_to_process = new_files + missing_files_to_reprocess
+
+if not final_files_to_process:
+    print("✅ 没有新的或缺失的文件需要处理。")
     print("重新生成所有页面的内部链接...")
 else:
-    print(f"发现 {len(new_files)} 个未处理文件。")
-    num_to_process = min(len(new_files), 30)
-    selected_files = random.sample(new_files, num_to_process)
+    print(f"发现 {len(new_files)} 个新文件，以及 {len(missing_files_to_reprocess)} 个缺失文件，本次将处理 {len(final_files_to_process)} 个文件。")
+    num_to_process = min(len(final_files_to_process), 30)
+    selected_files = random.sample(final_files_to_process, num_to_process)
     print(f"本次运行将处理 {len(selected_files)} 个文件。")
 
     available_keywords = list(keywords)
@@ -212,11 +226,13 @@ else:
 
         download_and_process_file(f['id'], f['mimeType'], f['name'], safe_name)
         
-        processed_data["fileIds"].append(f['id'])
+        # 只将真正处理过的新文件ID添加到processed_data中
+        if f in new_files:
+            processed_data["fileIds"].append(f['id'])
 
     with open(processed_file_path, "w") as f:
         json.dump(processed_data, f, indent=4)
-    print(f"💾 已将 {len(selected_files)} 个新文件 ID 保存到 {processed_file_path}")
+    print(f"💾 已将新处理的文件 ID 保存到 {processed_file_path}")
 
     with open(keywords_file, "w", encoding="utf-8") as f:
         for keyword in available_keywords:
@@ -238,30 +254,24 @@ with open("index.html", "w", encoding="utf-8") as f:
 print("✅ 已生成 index.html (完整站点地图)")
 
 # ------------------------
-# ------------------------
-# ------------------------
-# 在每个页面底部添加随机内部链接 (已优化，不会累积)
+# 在每个页面底部添加随机内部链接
 # ------------------------
 all_html_files = [f for f in os.listdir(".") if f.endswith(".html") and f != "index.html"]
 
 # 这个正则表达式会匹配并删除所有重复的 <!DOCTYPE html> 头部
-# 它会找到第一个 <!DOCTYPE html> 之后，紧接着出现的任何重复的 <!DOCTYPE html>
 doctype_pattern = re.compile(r'(<!DOCTYPE html>.*?)<!DOCTYPE html>', re.DOTALL | re.IGNORECASE)
-footer_pattern = re.compile(r"<footer>.*?</footer>", re.DOTALL | re.IGNORECASE)
 
 for fname in all_html_files:
     try:
         with open(fname, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
 
-        # 第一步：清理重复的 HTML 头部
-        # 这里的 r'\1' 表示只保留第一个匹配到的 <!DOCTYPE html> 和它后面的内容
+        # 使用正则表达式来清理重复的 HTML 头部
         cleaned_content = re.sub(doctype_pattern, r'\1', content)
 
-        # 第二步：移除所有已有的 footer 标签
-        cleaned_content = re.sub(footer_pattern, "", cleaned_content)
+        # 接下来，我们检查并添加底部链接
+        cleaned_content = re.sub(r"<footer.*?</footer>", "", cleaned_content, flags=re.DOTALL | re.IGNORECASE)
         
-        # 第三步：生成新的随机链接
         other_files = [x for x in all_html_files if x != fname]
         num_links = min(len(other_files), random.randint(4, 6))
 
@@ -269,8 +279,7 @@ for fname in all_html_files:
         if num_links > 0:
             random_links = random.sample(other_files, num_links)
             links_html = "<footer><ul>\n" + "\n".join([f'<li><a href="{x}">{x}</a></li>' for x in random_links]) + "\n</ul></footer>"
-            
-        # 第四步：将新的链接插入到正确的位置
+
         if "</body>" in cleaned_content:
             final_content = cleaned_content.replace("</body>", links_html + "</body>")
         else:
