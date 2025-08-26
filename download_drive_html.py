@@ -4,6 +4,7 @@ import sys
 import io
 import random
 import time
+import re # 导入正则表达式模块
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -72,11 +73,11 @@ def get_cached_files():
             with open(cache_file_path, "r") as f:
                 cache_data = json.load(f)
                 last_updated = cache_data.get("last_updated")
-                if time.time() - last_updated < CACHE_EXPIRY_HOURS * 3600:
+                if last_updated and (time.time() - last_updated < CACHE_EXPIRY_HOURS * 3600):
                     print("✅ 缓存未过期，正在从本地加载文件列表。")
                     return cache_data.get("files", [])
                 else:
-                    print(f"⏳ 缓存已过期（超过 {CACHE_EXPIRY_HOURS} 小时），将重新拉取文件列表。")
+                    print(f"⏳ 缓存已过期（上次更新超过 {CACHE_EXPIRY_HOURS} 小时），将重新拉取文件列表。")
         except (json.JSONDecodeError, IOError) as e:
             print(f"读取 {cache_file_path} 时出错: {e}。将重新拉取文件列表。")
     return None
@@ -176,7 +177,7 @@ new_files = [f for f in all_files if f['id'] not in processed_data["fileIds"]]
 
 if not new_files:
     print("✅ 没有新的文件需要处理。")
-    # 如果没有新文件，也要重新生成内部链接
+    # 即使没有新文件，也需要重新生成内部链接，以防万一
     print("重新生成所有页面的内部链接...")
 else:
     print(f"发现 {len(new_files)} 个未处理文件。")
@@ -245,14 +246,10 @@ for fname in all_html_files:
         with open(fname, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
 
-        # 移除已有的 footer 链接部分，如果有的话
-        if "<footer>" in content:
-            # 找到 <footer> 开始和结束的位置
-            start_pos = content.find("<footer>")
-            end_pos = content.find("</footer>")
-            # 确保找到成对的标签
-            if start_pos != -1 and end_pos != -1:
-                content = content[:start_pos] + content[end_pos + len("</footer>"):]
+        # 使用正则表达式移除所有已有的 footer 链接部分
+        # re.DOTALL 允许 '.' 匹配换行符，re.IGNORECASE 忽略大小写
+        # 正则表达式匹配从 <footer> 到 </footer> 之间的所有内容（非贪婪匹配）
+        content = re.sub(r"<footer>.*?</footer>", "", content, flags=re.DOTALL | re.IGNORECASE)
         
         # 从潜在链接列表中排除当前文件
         other_files = [x for x in all_html_files if x != fname]
@@ -262,11 +259,12 @@ for fname in all_html_files:
         if num_links > 0:
             random_links = random.sample(other_files, num_links)
             links_html = "<footer><ul>\n" + "\n".join([f'<li><a href="{x}">{x}</a></li>' for x in random_links]) + "\n</ul></footer>"
+            
             # 找到 </body> 标签之前的位置来插入新的链接
             if "</body>" in content:
                 content = content.replace("</body>", links_html + "</body>")
             else:
-                # 如果没有 </body>，就直接附加
+                # 如果没有 </body> 标签，就直接附加到文件末尾
                 content += links_html
 
         with open(fname, "w", encoding="utf-8") as f:
