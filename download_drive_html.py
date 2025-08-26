@@ -172,6 +172,7 @@ if all_files is None:
         files = list_files(folder_id)
         all_files.extend(files)
     save_files_to_cache(all_files)
+    print(f"📊 本次总共识别到 {len(all_files)} 个文件。")
 
 new_files = [f for f in all_files if f['id'] not in processed_data["fileIds"]]
 
