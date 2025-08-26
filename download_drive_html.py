@@ -160,25 +160,29 @@ def export_google_doc(file_id, file_name):
     print(f"✅ Google 文档已导出为 HTML: {file_name}")
 
 # ------------------------
+# ------------------------
 # 主程序
 # ------------------------
 all_files = get_cached_files()
 
 if all_files is None:
     all_files = []
+    total_files_found = 0
     print("⏳ 正在从 Google Drive 拉取所有文件列表...")
     for folder_id in FOLDER_IDS:
         print(f"📂 正在获取文件夹: {folder_id}")
         files = list_files(folder_id)
+        file_count = len(files)
         all_files.extend(files)
+        total_files_found += file_count
+        print(f"✅ 文件夹 [{folder_id}] 共找到 {file_count} 个文件。")
     save_files_to_cache(all_files)
-    print(f"📊 本次总共识别到 {len(all_files)} 个文件。")
+    print(f"🚀 总共从 {len(FOLDER_IDS)} 个文件夹中找到 {total_files_found} 个文件。")
 
 new_files = [f for f in all_files if f['id'] not in processed_data["fileIds"]]
 
 if not new_files:
     print("✅ 没有新的文件需要处理。")
-    # 即使没有新文件，也需要重新生成内部链接，以防万一
     print("重新生成所有页面的内部链接...")
 else:
     print(f"发现 {len(new_files)} 个未处理文件。")
@@ -205,13 +209,8 @@ else:
 
         print(f"正在处理 '{f['name']}' -> '{safe_name}'")
 
-        if f['mimeType'] == 'text/html':
-            download_html_file(f['id'], safe_name)
-        elif f['mimeType'] == 'text/plain':
-            download_txt_file(f['id'], safe_name, f['name'])
-        else: # 'application/vnd.google-apps.document'
-            export_google_doc(f['id'], safe_name)
-
+        download_and_process_file(f['id'], f['mimeType'], f['name'], safe_name)
+        
         processed_data["fileIds"].append(f['id'])
 
     with open(processed_file_path, "w") as f:
